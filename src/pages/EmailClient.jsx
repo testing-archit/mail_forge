@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import CryptoJS from 'crypto-js'
 import {
   Send,
@@ -19,9 +19,14 @@ import {
   Unlock,
   ShieldCheck,
   ShieldAlert,
-  Key
+  Key,
+  Sparkles,
+  Wand2,
+  ListTodo,
+  FileText
 } from 'lucide-react'
 import { emailAPI } from '../services/api'
+import { aiAPI } from '../services/ai'
 
 const ENCRYPTION_MARKER_START = '-----BEGIN MAILFORGE ENCRYPTED MESSAGE-----'
 const ENCRYPTION_MARKER_END = '-----END MAILFORGE ENCRYPTED MESSAGE-----'
@@ -50,6 +55,13 @@ export default function EmailClient({ user, onNavigate }) {
   const [decryptionError, setDecryptionError] = useState(false)
   const [isEncrypted, setIsEncrypted] = useState(false)
   const [integrityStatus, setIntegrityStatus] = useState('loading') // loading, verified, failed
+
+  // AI States
+  const [isAiLoading, setIsAiLoading] = useState(false)
+  const [aiSummary, setAiSummary] = useState(null)
+  const [aiActionItems, setAiActionItems] = useState(null)
+  const [showAiDraftInput, setShowAiDraftInput] = useState(false)
+  const [aiDraftPrompt, setAiDraftPrompt] = useState('')
 
   // Derived Mail ID
   const userMailId = user?.username ? `${user.username}@mailforge.com` : user?.email
@@ -115,12 +127,14 @@ export default function EmailClient({ user, onNavigate }) {
   }, [activeFolder, user])
 
   const handleSelectEmail = async (email) => {
-    // Reset decryption and security states
+    // Reset states
     setDecryptedBody(null)
     setDecryptPassword('')
     setDecryptionError(false)
     setIsEncrypted(false)
     setIntegrityStatus('loading')
+    setAiSummary(null)
+    setAiActionItems(null)
 
     // If not read, mark it as read
     if (!email.isRead && activeFolder === 'inbox') {
@@ -258,6 +272,65 @@ export default function EmailClient({ user, onNavigate }) {
     }
   }
 
+  // AI Functions
+  const handleAiSummarize = async () => {
+    const textToSummarize = decryptedBody || selectedEmail.body || selectedEmail.content;
+    if (!textToSummarize) return;
+
+    try {
+      setIsAiLoading(true)
+      const summary = await aiAPI.summarizeEmail(textToSummarize)
+      setAiSummary(summary)
+    } catch (err) {
+      alert("AI failed: " + err.message)
+    } finally {
+      setIsAiLoading(false)
+    }
+  }
+
+  const handleAiActionItems = async () => {
+    const textToProcess = decryptedBody || selectedEmail.body || selectedEmail.content;
+    if (!textToProcess) return;
+
+    try {
+      setIsAiLoading(true)
+      const actions = await aiAPI.extractActionItems(textToProcess)
+      setAiActionItems(actions)
+    } catch (err) {
+      alert("AI failed: " + err.message)
+    } finally {
+      setIsAiLoading(false)
+    }
+  }
+
+  const handleAiGenerateDraft = async () => {
+    if (!aiDraftPrompt) return;
+    try {
+      setIsAiLoading(true)
+      const draft = await aiAPI.generateDraft(aiDraftPrompt)
+      setComposeData(prev => ({ ...prev, body: draft }))
+      setShowAiDraftInput(false)
+      setAiDraftPrompt('')
+    } catch (err) {
+      alert("AI Draft failed: " + err.message)
+    } finally {
+      setIsAiLoading(false)
+    }
+  }
+
+  const handleAiImprove = async (tone) => {
+    if (!composeData.body) return;
+    try {
+      setIsAiLoading(true)
+      const improved = await aiAPI.improveWriting(composeData.body, tone)
+      setComposeData(prev => ({ ...prev, body: improved }))
+    } catch (err) {
+      alert("AI Rewrite failed: " + err.message)
+    } finally {
+      setIsAiLoading(false)
+    }
+  }
+
   // Search filtering
   const filteredEmails = emails.filter(e => {
     const searchLower = searchQuery.toLowerCase()
@@ -299,6 +372,7 @@ export default function EmailClient({ user, onNavigate }) {
             setSelectedEmail(null)
             setEncryptEmail(false)
             setEncryptionPassword('')
+            setShowAiDraftInput(false)
           }}
           className="px-6 py-2 bg-brand-gold text-navy rounded-lg font-semibold flex items-center gap-2 hover:shadow-lg transition-all"
         >
@@ -380,9 +454,10 @@ export default function EmailClient({ user, onNavigate }) {
         <div className="flex-1 overflow-hidden relative">
           
           {/* Loading Overlay */}
-          {loading && (
-            <div className="absolute inset-0 bg-navy/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          {(loading || isAiLoading) && (
+            <div className="absolute inset-0 bg-navy/50 backdrop-blur-sm z-50 flex items-center justify-center flex-col gap-4">
               <div className="w-10 h-10 border-4 border-brand-gold/30 border-t-brand-gold rounded-full animate-spin" />
+              {isAiLoading && <p className="text-brand-gold font-bold animate-pulse flex items-center gap-2"><Sparkles className="w-5 h-5"/> AI is thinking...</p>}
             </div>
           )}
 
@@ -523,22 +598,46 @@ export default function EmailClient({ user, onNavigate }) {
               <div className="flex-1 p-6 space-y-6 max-w-4xl mx-auto w-full">
                 {/* From & Subject */}
                 <div>
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-16 h-16 rounded-full bg-brand-blue/20 flex items-center justify-center font-bold text-xl text-brand-blue">
-                      {getAvatar(selectedEmail.fromAddress)}
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-full bg-brand-blue/20 flex items-center justify-center font-bold text-xl text-brand-blue">
+                        {getAvatar(selectedEmail.fromAddress)}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-white text-lg">
+                          {selectedEmail.fromAddress}
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          to {selectedEmail.toAddress}
+                        </p>
+                        <p className="text-gray-500 text-xs flex items-center gap-2 mt-1">
+                          <Clock className="w-4 h-4" />
+                          {formatDate(selectedEmail.receivedAt)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-semibold text-white text-lg">
-                        {selectedEmail.fromAddress}
-                      </p>
-                      <p className="text-gray-400 text-sm">
-                        to {selectedEmail.toAddress}
-                      </p>
-                      <p className="text-gray-500 text-xs flex items-center gap-2 mt-1">
-                        <Clock className="w-4 h-4" />
-                        {formatDate(selectedEmail.receivedAt)}
-                      </p>
-                    </div>
+
+                    {/* AI Read Tools */}
+                    {(!isEncrypted || decryptedBody) && (
+                      <div className="flex items-center gap-2">
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleAiSummarize}
+                          className="px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 text-purple-300 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-purple-500/30 transition-all"
+                        >
+                          <FileText className="w-4 h-4" /> Summarize
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleAiActionItems}
+                          className="px-4 py-2 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 text-green-300 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-green-500/30 transition-all"
+                        >
+                          <ListTodo className="w-4 h-4" /> Action Items
+                        </motion.button>
+                      </div>
+                    )}
                   </div>
 
                   <h2 className="text-3xl font-serif font-bold text-white mb-4 flex items-center gap-3">
@@ -546,6 +645,32 @@ export default function EmailClient({ user, onNavigate }) {
                     {selectedEmail.subject || '(No Subject)'}
                   </h2>
                 </div>
+
+                {/* AI Summary Display */}
+                <AnimatePresence>
+                  {aiSummary && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0, y: -10 }}
+                      animate={{ opacity: 1, height: 'auto', y: 0 }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4 overflow-hidden"
+                    >
+                      <h3 className="text-purple-300 font-bold mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4"/> AI Summary</h3>
+                      <p className="text-gray-300 text-sm leading-relaxed">{aiSummary}</p>
+                    </motion.div>
+                  )}
+                  {aiActionItems && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0, y: -10 }}
+                      animate={{ opacity: 1, height: 'auto', y: 0 }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 overflow-hidden"
+                    >
+                      <h3 className="text-green-300 font-bold mb-2 flex items-center gap-2"><ListTodo className="w-4 h-4"/> AI Action Items</h3>
+                      <div className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{aiActionItems}</div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Email Body */}
                 <div className={`border rounded-xl p-6 ${isEncrypted && !decryptedBody ? 'bg-black/30 border-brand-gold/30' : 'bg-white/5 border-white/10'}`}>
@@ -649,17 +774,73 @@ export default function EmailClient({ user, onNavigate }) {
                     </span>
                   )}
                 </h2>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  onClick={() => setCurrentView('inbox')}
-                  className="text-gray-400 hover:text-white transition-colors p-2"
-                >
-                  ✕
-                </motion.button>
+                <div className="flex items-center gap-4">
+                  {/* AI Assistant Button */}
+                  <div className="relative group">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      onClick={() => setShowAiDraftInput(!showAiDraftInput)}
+                      className="px-4 py-2 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/50 text-indigo-300 rounded-lg font-bold flex items-center gap-2 hover:from-indigo-500/40 transition-all"
+                    >
+                      <Sparkles className="w-4 h-4" /> AI Assistant
+                    </motion.button>
+                    {/* Tooltip or Dropdown could go here */}
+                  </div>
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    onClick={() => setCurrentView('inbox')}
+                    className="text-gray-400 hover:text-white transition-colors p-2"
+                  >
+                    ✕
+                  </motion.button>
+                </div>
               </div>
 
               {/* Compose Form */}
               <div className="flex-1 p-6 max-w-4xl mx-auto w-full flex flex-col">
+                
+                {/* AI Draft Input Panel */}
+                <AnimatePresence>
+                  {showAiDraftInput && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0, y: -10 }}
+                      animate={{ opacity: 1, height: 'auto', y: 0 }}
+                      exit={{ opacity: 0, height: 0, y: -10 }}
+                      className="mb-6 p-5 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/30 rounded-xl overflow-hidden"
+                    >
+                      <h3 className="text-indigo-300 font-bold mb-3 flex items-center gap-2"><Wand2 className="w-4 h-4"/> Generate Draft</h3>
+                      <div className="flex gap-3">
+                        <input
+                          type="text"
+                          placeholder="e.g. Ask the team for the Q3 report by Friday"
+                          value={aiDraftPrompt}
+                          onChange={(e) => setAiDraftPrompt(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAiGenerateDraft()}
+                          className="flex-1 px-4 py-2 bg-black/30 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-400 transition-colors"
+                        />
+                        <button
+                          onClick={handleAiGenerateDraft}
+                          className="px-4 py-2 bg-indigo-500 text-white font-bold rounded-lg hover:bg-indigo-600 transition-colors"
+                        >
+                          Generate
+                        </button>
+                      </div>
+                      
+                      {composeData.body && (
+                        <div className="mt-4 pt-4 border-t border-indigo-500/20">
+                          <p className="text-xs text-indigo-300/70 uppercase tracking-widest font-bold mb-2">Rewrite existing text</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleAiImprove('professional')} className="px-3 py-1.5 text-xs font-bold bg-white/5 border border-white/10 rounded hover:bg-indigo-500/20 hover:text-indigo-300 transition-colors text-gray-300">Make Professional</button>
+                            <button onClick={() => handleAiImprove('friendly')} className="px-3 py-1.5 text-xs font-bold bg-white/5 border border-white/10 rounded hover:bg-indigo-500/20 hover:text-indigo-300 transition-colors text-gray-300">Make Friendly</button>
+                            <button onClick={() => handleAiImprove('concise')} className="px-3 py-1.5 text-xs font-bold bg-white/5 border border-white/10 rounded hover:bg-indigo-500/20 hover:text-indigo-300 transition-colors text-gray-300">Make Concise</button>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Security Toggle */}
                 <div className="mb-6 p-4 bg-black/20 border border-white/10 rounded-xl flex items-center justify-between">
                    <div className="flex items-center gap-3">
@@ -712,7 +893,7 @@ export default function EmailClient({ user, onNavigate }) {
                   </motion.div>
                 )}
 
-                <div className="space-y-4 flex-1">
+                <div className="space-y-4 flex-1 flex flex-col">
                   <div>
                     <input
                       type="email"
@@ -743,17 +924,19 @@ export default function EmailClient({ user, onNavigate }) {
                     />
                   </div>
 
-                  <textarea
-                    placeholder={encryptEmail ? "Write your secret message..." : "Write your message..."}
-                    value={composeData.body}
-                    onChange={(e) =>
-                      setComposeData((prev) => ({
-                        ...prev,
-                        body: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-brand-gold transition-colors resize-none flex-1 min-h-[300px]"
-                  />
+                  <div className="relative flex-1 flex flex-col min-h-[300px]">
+                    <textarea
+                      placeholder={encryptEmail ? "Write your secret message..." : "Write your message or let AI generate one..."}
+                      value={composeData.body}
+                      onChange={(e) =>
+                        setComposeData((prev) => ({
+                          ...prev,
+                          body: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-brand-gold transition-colors resize-none flex-1"
+                    />
+                  </div>
                 </div>
 
                 {/* Compose Footer */}
@@ -770,7 +953,7 @@ export default function EmailClient({ user, onNavigate }) {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={handleSendEmail}
-                    disabled={loading}
+                    disabled={loading || isAiLoading}
                     className={`px-8 py-3 rounded-lg font-bold flex items-center gap-2 hover:shadow-lg transition-all disabled:opacity-50 ${
                       encryptEmail 
                         ? 'bg-brand-gold text-navy shadow-[0_0_15px_rgba(255,215,0,0.2)]' 

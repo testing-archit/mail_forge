@@ -11,6 +11,7 @@ import AuthPage from './pages/AuthPage'
 import Dashboard from './pages/Dashboard'
 import EmailClient from './pages/EmailClient'
 import Settings from './pages/Settings'
+import GlobalChatbot from './components/GlobalChatbot'
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home')
@@ -148,8 +149,67 @@ export default function App() {
     setCurrentPage('home')
   }
 
-  // Landing Page
-  if (currentPage === 'home' && !isAuthenticated) {
+  const renderPage = () => {
+    // Landing Page
+    if (currentPage === 'home' && !isAuthenticated) {
+      return (
+        <div className="bg-navy">
+          <Navbar onNavigate={handleNavigate} />
+          <Hero onGetStarted={() => handleNavigate('auth')} />
+          <StatsBar />
+          <Features />
+          <HowItWorks />
+          <SecuritySection />
+          <CtaSection onGetStarted={() => handleNavigate('auth')} />
+          <Footer />
+        </div>
+      )
+    }
+
+    // Auth Page
+    if (currentPage === 'auth' && !isAuthenticated) {
+      return <AuthPage onLogin={handleLogin} onNavigate={handleNavigate} />
+    }
+
+    // Dashboard
+    if (currentPage === 'dashboard' && isAuthenticated) {
+      return (
+        <Dashboard
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={handleNavigate}
+        />
+      )
+    }
+
+    // Email Client
+    if (currentPage === 'email' && isAuthenticated) {
+      return <EmailClient user={user} onNavigate={handleNavigate} />
+    }
+
+    // Settings
+    if (currentPage === 'settings' && isAuthenticated) {
+      return (
+        <Settings
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={handleNavigate}
+        />
+      )
+    }
+
+    // Default to dashboard if authenticated
+    if (isAuthenticated) {
+      return (
+        <Dashboard
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={handleNavigate}
+        />
+      )
+    }
+
+    // Fallback to home
     return (
       <div className="bg-navy">
         <Navbar onNavigate={handleNavigate} />
@@ -164,59 +224,10 @@ export default function App() {
     )
   }
 
-  // Auth Page
-  if (currentPage === 'auth' && !isAuthenticated) {
-    return <AuthPage onLogin={handleLogin} onNavigate={handleNavigate} />
-  }
-
-  // Dashboard
-  if (currentPage === 'dashboard' && isAuthenticated) {
-    return (
-      <Dashboard
-        user={user}
-        onLogout={handleLogout}
-        onNavigate={handleNavigate}
-      />
-    )
-  }
-
-  // Email Client
-  if (currentPage === 'email' && isAuthenticated) {
-    return <EmailClient user={user} onNavigate={handleNavigate} />
-  }
-
-  // Settings
-  if (currentPage === 'settings' && isAuthenticated) {
-    return (
-      <Settings
-        user={user}
-        onLogout={handleLogout}
-        onNavigate={handleNavigate}
-      />
-    )
-  }
-
-  // Default to dashboard if authenticated
-  if (isAuthenticated) {
-    return (
-      <Dashboard
-        user={user}
-        onLogout={handleLogout}
-        onNavigate={handleNavigate}
-      />
-    )
-  }
-
   return (
-    <div className="bg-navy">
-      <Navbar onNavigate={handleNavigate} />
-      <Hero onGetStarted={() => handleNavigate('auth')} />
-      <StatsBar />
-      <Features />
-      <HowItWorks />
-      <SecuritySection />
-      <CtaSection onGetStarted={() => handleNavigate('auth')} />
-      <Footer />
-    </div>
+    <>
+      {renderPage()}
+      <GlobalChatbot />
+    </>
   )
 }

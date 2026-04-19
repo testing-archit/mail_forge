@@ -15,9 +15,12 @@ import {
   CheckCircle,
   Mail,
   Shield,
-  PenTool
+  PenTool,
+  Sparkles,
+  Wand2
 } from 'lucide-react'
 import { userAPI } from '../services/api'
+import { aiAPI } from '../services/ai'
 
 export default function SettingsPage({ user, onNavigate, onLogout }) {
   const [activeTab, setActiveTab] = useState('mail')
@@ -35,6 +38,11 @@ export default function SettingsPage({ user, onNavigate, onLogout }) {
     signatureEnabled: false,
     signature: ''
   })
+
+  // AI States
+  const [isAiLoading, setIsAiLoading] = useState(false)
+  const [showAiPrompt, setShowAiPrompt] = useState(false)
+  const [aiContext, setAiContext] = useState('')
 
   // Mock API Keys for UI completeness
   const [apiKeys, setApiKeys] = useState([
@@ -103,6 +111,23 @@ export default function SettingsPage({ user, onNavigate, onLogout }) {
       ...prev,
       [key]: !prev[key]
     }))
+  }
+
+  const handleAiGenerateAutoReply = async () => {
+    if (!aiContext.trim()) return;
+    try {
+      setIsAiLoading(true)
+      const generatedReply = await aiAPI.generateAutoReply(aiContext)
+      setMailSettings(prev => ({ ...prev, autoReplyMessage: generatedReply }))
+      setShowAiPrompt(false)
+      setAiContext('')
+      showSuccess('AI generated your auto-reply!')
+    } catch (err) {
+      console.error('Failed to generate auto-reply', err)
+      setError('AI generation failed: ' + err.message)
+    } finally {
+      setIsAiLoading(false)
+    }
   }
 
   const handleGenerateApiKey = () => {
@@ -326,9 +351,39 @@ export default function SettingsPage({ user, onNavigate, onLogout }) {
                           animate={{ opacity: 1, height: 'auto' }}
                           className="pt-4"
                         >
-                          <label className="block text-sm font-semibold text-gray-200 mb-2">
-                            Auto Reply Message
-                          </label>
+                          <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-semibold text-gray-200">
+                              Auto Reply Message
+                            </label>
+                            <button
+                              onClick={() => setShowAiPrompt(!showAiPrompt)}
+                              className="text-xs font-bold px-3 py-1 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border border-indigo-500/30 rounded-full hover:bg-indigo-500/30 transition-colors flex items-center gap-1"
+                            >
+                              <Sparkles className="w-3 h-3" /> Generate with AI
+                            </button>
+                          </div>
+                          
+                          {/* AI Prompt Input */}
+                          {showAiPrompt && (
+                            <div className="mb-3 p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="E.g., On vacation until next Monday, contact Bob for emergencies"
+                                value={aiContext}
+                                onChange={(e) => setAiContext(e.target.value)}
+                                className="flex-1 px-3 py-2 bg-black/30 border border-white/10 rounded text-sm text-white focus:outline-none focus:border-indigo-400"
+                              />
+                              <button
+                                onClick={handleAiGenerateAutoReply}
+                                disabled={isAiLoading}
+                                className="px-3 py-2 bg-indigo-500 text-white text-sm font-bold rounded hover:bg-indigo-600 transition-colors flex items-center gap-2"
+                              >
+                                {isAiLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                                Generate
+                              </button>
+                            </div>
+                          )}
+
                           <textarea
                             value={mailSettings.autoReplyMessage}
                             onChange={(e) => setMailSettings(prev => ({ ...prev, autoReplyMessage: e.target.value }))}

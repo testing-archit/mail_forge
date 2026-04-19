@@ -105,8 +105,8 @@ A full schema and mock data script has been provided in the repository.
 Ensure your `.env` file contains your Supabase credentials if your frontend or serverless functions need direct connection, though primary API routing is expected to go through the microservices.
 
 ```env
-VITE_SUPABASE_URL=https://hfmsjzbvsmigbdpkpshb.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_AmeoDnfVfT7SW3tf4Y3ztw_ZBlGmA_D
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 ```
 
 ### 3. Running the App

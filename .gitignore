@@ -1,5 +1,4 @@
 node_modules
-
-
 FRONTEND_SETUP.md
-
+.env
+.env.*
