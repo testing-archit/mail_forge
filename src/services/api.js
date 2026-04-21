@@ -196,12 +196,6 @@ export const emailAPI = {
     return apiRequest(`/mail/${emailId}/read`, {
       method: 'PATCH',
     })
-  },
-
-  verifyIntegrity: async (emailId) => {
-    return apiRequest(`/mail/${emailId}/verify`, {
-      method: 'GET'
-    })
   }
 }
 

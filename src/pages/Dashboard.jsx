@@ -55,21 +55,37 @@ export default function Dashboard({ user, onLogout, onNavigate }) {
     const loadProfile = async () => {
       try {
         setLoading(true)
-        const response = await userAPI.getProfile()
+        const response = await userAPI.getProfile(user?.id)
+        const data = response.data || response
         setProfileData({
-          name: response.name || user?.name,
-          email: response.email || user?.email,
-          bio: response.bio || 'Security-conscious developer',
-          phone: response.phone || '+91 98765 43210',
+          name: data.firstName ? `${data.firstName} ${data.lastName}` : (user?.username || user?.name || user?.email?.split('@')[0] || 'User'),
+          email: data.email || user?.email,
+          bio: data.bio || 'Security-conscious developer',
+          phone: data.phone || '+91 98765 43210',
         })
         setLoading(false)
       } catch (error) {
         console.error('Failed to load profile:', error)
+        setProfileData({
+          name: user?.username || user?.name || user?.email?.split('@')[0] || 'User',
+          email: user?.email || 'Unknown',
+          bio: 'Security-conscious developer',
+          phone: '+91 98765 43210',
+        })
         setLoading(false)
       }
     }
-    loadProfile()
-  }, [])
+    if (user?.id) {
+      loadProfile()
+    } else {
+      setProfileData({
+        name: user?.username || user?.name || user?.email?.split('@')[0] || 'User',
+        email: user?.email || 'Unknown',
+        bio: 'Security-conscious developer',
+        phone: '+91 98765 43210',
+      })
+    }
+  }, [user])
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target
@@ -84,8 +100,8 @@ export default function Dashboard({ user, onLogout, onNavigate }) {
   const handleSaveProfile = async () => {
     try {
       setLoading(true)
-      await userAPI.updateProfile(profileData)
-      setSuccessMessage('Profile updated successfully!')
+      // await userAPI.updateProfile(profileData)
+      setSuccessMessage('Profile update is not implemented in the current API version.')
       setEditMode(false)
       setLoading(false)
       setTimeout(() => setSuccessMessage(''), 3000)
@@ -103,11 +119,11 @@ export default function Dashboard({ user, onLogout, onNavigate }) {
     }
     try {
       setLoading(true)
-      await userAPI.changePassword(
-        passwordData.currentPassword,
-        passwordData.newPassword
-      )
-      setSuccessMessage('Password changed successfully!')
+      // await userAPI.changePassword(
+      //   passwordData.currentPassword,
+      //   passwordData.newPassword
+      // )
+      setSuccessMessage('Password change is not implemented in the current API version.')
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
       setLoading(false)
       setTimeout(() => setSuccessMessage(''), 3000)
@@ -123,6 +139,21 @@ export default function Dashboard({ user, onLogout, onNavigate }) {
       ...prev,
       [key]: !prev[key],
     }))
+  }
+
+  const handleDeleteAccount = async () => {
+    if (window.confirm("Are you sure you want to deactivate your account? This action cannot be undone.")) {
+      try {
+        setLoading(true)
+        await userAPI.deactivate(user.id)
+        alert("Account deactivated successfully.")
+        onLogout()
+      } catch (error) {
+        alert("Failed to deactivate account: " + error.message)
+      } finally {
+        setLoading(false)
+      }
+    }
   }
 
   const tabs = [
@@ -152,15 +183,26 @@ export default function Dashboard({ user, onLogout, onNavigate }) {
                 Welcome back, {profileData.name}! 👋
               </p>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={onLogout}
-              className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg font-semibold flex items-center gap-2 transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-              Sign Out
-            </motion.button>
+            <div className="flex items-center gap-4">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => onNavigate('email')}
+                className="px-6 py-2 bg-brand-gold text-navy rounded-lg font-semibold flex items-center gap-2 hover:shadow-[0_0_15px_rgba(255,215,0,0.4)] transition-all"
+              >
+                <Mail className="w-5 h-5" />
+                Open Inbox
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onLogout}
+                className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+              >
+                <LogOut className="w-5 h-5" />
+                Sign Out
+              </motion.button>
+            </div>
           </div>
         </motion.div>
 
@@ -620,6 +662,7 @@ export default function Dashboard({ user, onLogout, onNavigate }) {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
+                      onClick={handleDeleteAccount}
                       className="px-6 py-3 bg-red-500/20 text-red-400 border border-red-500/50 rounded-lg font-semibold hover:bg-red-500/30 transition-colors"
                     >
                       Delete Account

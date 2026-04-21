@@ -12,6 +12,7 @@ import Dashboard from './pages/Dashboard'
 import EmailClient from './pages/EmailClient'
 import Settings from './pages/Settings'
 import GlobalChatbot from './components/GlobalChatbot'
+import { supabase } from './services/supabaseClient'
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home')
@@ -28,14 +29,52 @@ export default function App() {
     return deviceId
   }
 
-  // Check for existing token on mount
+  // Check for existing session and listen for auth state changes
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    const userData = localStorage.getItem('user')
-    if (token && userData) {
-      setIsAuthenticated(true)
-      setUser(JSON.parse(userData))
-    }
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setIsAuthenticated(true)
+        const userMetadata = session.user.user_metadata || {}
+        setUser({
+          id: session.user.id,
+          username: userMetadata.username || session.user.email,
+          email: session.user.email,
+        })
+        localStorage.setItem('token', session.access_token)
+      } else {
+        // Fallback for transition phase, remove if strict Supabase only
+        const token = localStorage.getItem('token')
+        const userData = localStorage.getItem('user')
+        if (token && userData) {
+          setIsAuthenticated(true)
+          setUser(JSON.parse(userData))
+        }
+      }
+    })
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setIsAuthenticated(true)
+        const userMetadata = session.user.user_metadata || {}
+        setUser({
+          id: session.user.id,
+          username: userMetadata.username || session.user.email,
+          email: session.user.email,
+        })
+        localStorage.setItem('token', session.access_token)
+      } else {
+        setIsAuthenticated(false)
+        setUser(null)
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   // SSE Subscription setup
@@ -122,13 +161,14 @@ export default function App() {
       localStorage.setItem('token', loginData.token)
       
       // Ensure we have an ID for the user
+      const userMetadata = loginData.user.user_metadata || {}
       const userData = {
         id: loginData.user.id || loginData.user.username,
-        username: loginData.user.username || loginData.username,
+        username: userMetadata.username || loginData.user.username || loginData.username,
         email: loginData.user.email,
         externalMail: loginData.user.externalMail,
-        firstName: loginData.user.firstName,
-        lastName: loginData.user.lastName
+        firstName: userMetadata.firstName || loginData.user.firstName,
+        lastName: userMetadata.lastName || loginData.user.lastName
       }
       localStorage.setItem('user', JSON.stringify(userData))
 
@@ -141,7 +181,8 @@ export default function App() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setIsAuthenticated(false)

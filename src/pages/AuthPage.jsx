@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Mail, Lock, User, KeyRound } from 'lucide-react'
-import { authAPI } from '../services/api'
+import { supabase } from '../services/supabaseClient'
 
 export default function AuthPage({ onLogin, onNavigate }) {
   const [mode, setMode] = useState('login') // 'login', 'register', or 'verify'
@@ -107,21 +107,43 @@ export default function AuthPage({ onLogin, onNavigate }) {
 
     try {
       if (mode === 'verify') {
-        await authAPI.verify(formData.username, formData.otp)
-        // Auto login after verification
-        const response = await authAPI.login(formData.username, formData.password)
-        handleLoginSuccess(response)
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: formData.email || formData.username,
+          token: formData.otp,
+          type: 'signup'
+        })
+        if (error) throw error
+        
+        onLogin({
+          token: data.session?.access_token,
+          user: data.user,
+          username: formData.username || formData.email,
+        })
       } else if (mode === 'login') {
-        const response = await authAPI.login(formData.username || formData.email, formData.password)
-        handleLoginSuccess(response)
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.username || formData.email,
+          password: formData.password,
+        })
+        if (error) throw error
+        
+        onLogin({
+          token: data.session?.access_token,
+          user: data.user,
+          username: formData.username || formData.email,
+        })
       } else {
         // Register
-        await authAPI.register(
-          formData.username,
-          formData.email,
-          formData.password
-        )
-        // Transition to verify mode instead of auto-login
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              username: formData.username
+            }
+          }
+        })
+        if (error) throw error
+
         setMode('verify')
         setSuccessMsg('Registration successful! Please check your email for the OTP.')
       }
@@ -129,24 +151,10 @@ export default function AuthPage({ onLogin, onNavigate }) {
     } catch (error) {
       let errorMessage = error.message
 
-      // Handle 403 specifically
-      if (error.status === 403 || error.message.includes('Account not verified')) {
-        setMode('verify')
-        setSuccessMsg('Your account is not verified. Please check your email for the OTP.')
-        setLoading(false)
-        return
-      }
-
       // Better error messages
-      if (error.message.includes('503')) {
-        errorMessage = 'Backend services unavailable. Make sure all services are running.'
-      } else if (error.message.includes('Failed to fetch')) {
-        errorMessage = 'Cannot reach API Gateway. Is it running on http://localhost:8080?'
-      } else if (error.status === 409 || error.message.includes('already exists')) {
-        errorMessage = 'Username or email already registered'
-      } else if (error.status === 401 || error.message.includes('credentials')) {
-        errorMessage = 'Invalid username or password'
-      } else if (error.message.includes('Invalid OTP')) {
+      if (errorMessage.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password'
+      } else if (errorMessage.includes('Token has expired or is invalid')) {
         errorMessage = 'The OTP entered is invalid. Please try again.'
       }
 
@@ -159,7 +167,11 @@ export default function AuthPage({ onLogin, onNavigate }) {
     setLoading(true)
     setErrors({})
     try {
-      await authAPI.resendOtp(formData.username)
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: formData.email || formData.username
+      })
+      if (error) throw error
       setSuccessMsg('A new OTP has been sent to your email.')
     } catch (error) {
       setErrors({ submit: error.message || 'Failed to resend OTP' })
