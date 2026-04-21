@@ -10,7 +10,8 @@ const requireAuth = async (req, res, next) => {
 
   try {
     // 1. Try to verify the token with Supabase (since frontend uses Supabase Auth)
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const { data, error } = await supabase.auth.getUser(token);
+    const user = data?.user;
     
     if (user && !error) {
       req.user = user;
